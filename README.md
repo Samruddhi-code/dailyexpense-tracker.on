@@ -1,1 +1,752 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Daily Expenses Tracker — Single File</title>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- CryptoJS -->
+  <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.1.1/crypto-js.min.js"></script>
+
+  <style>
+    :root{
+      --bg1:#071127; --bg2:#0b1330;
+      --accent1:#ff9a76; --accent2:#7c5cff;
+      --glass: rgba(255,255,255,0.06);
+      --muted: rgba(255,255,255,0.78);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    html,body{height:100%;margin:0;background:
+      radial-gradient(circle at 8% 12%, rgba(255,255,255,0.02), transparent 12%),
+      linear-gradient(180deg,var(--bg1),var(--bg2));
+      color:white; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;}
+    .container{max-width:1140px;margin:24px auto;padding:18px;}
+
+    /* Top bar */
+    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+    .brand{font-weight:900;font-size:20px;letter-spacing:0.6px}
+    .top-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+    /* Buttons and inputs */
+    input,select,button,textarea{font-size:14px;padding:10px;border-radius:10px;border:none;background:var(--glass);color:white}
+    button.primary{background:linear-gradient(90deg,var(--accent1),var(--accent2));color:#071127;font-weight:700;cursor:pointer}
+    .muted{color:var(--muted);font-size:13px}
+
+    /* Login layout with 3D layered image */
+    .login-grid{display:grid;grid-template-columns:1fr 480px;gap:18px;align-items:center}
+    .card{padding:26px;border-radius:16px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04);box-shadow:0 20px 50px rgba(0,0,0,0.6)}
+    .card h1{margin:0 0 8px;font-size:28px}
+    .field{margin:10px 0}
+
+    .image-block{position:relative;height:320px;border-radius:16px;overflow:visible}
+    .layer{position:absolute;border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,0.6)}
+    .layer.l1{width:96%;height:280px;background:linear-gradient(90deg,#ffb199,#ffdfba);left:-6%;transform:rotate(-6deg);top:8%}
+    .layer.l2{width:92%;height:280px;background:linear-gradient(90deg,#8ec5ff,#e0c3fc);left:4%;transform:rotate(6deg);top:12%}
+    .layer.l3{width:88%;height:280px;background-size:cover;background-position:center;left:12%;top:18%;z-index:6;border:1px solid rgba(255,255,255,0.06)}
+    .image-caption{position:relative;z-index:8;margin-top:240px;color:var(--muted);font-size:13px}
+
+    /* Main app layout */
+    .main-grid{display:grid;grid-template-columns:340px 1fr;gap:18px;margin-top:18px}
+    .panel{padding:14px;border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.03));border:1px solid rgba(255,255,255,0.03)}
+    .flex{display:flex;gap:8px;align-items:center}
+    .chips{display:flex;gap:8px;flex-wrap:wrap}
+    .chip{padding:8px 10px;border-radius:999px;background:rgba(255,255,255,0.03);cursor:pointer}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;text-align:left;border-bottom:1px dashed rgba(255,255,255,0.03)}
+
+    /* Pages */
+    .page{display:none}
+    .page.active{display:block}
+
+    /* Trend page big chart */
+    .trend-area{height:460px;border-radius:12px;padding:12px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.02));}
+
+    /* responsive */
+    @media(max-width:980px){
+      .login-grid{grid-template-columns:1fr}
+      .main-grid{grid-template-columns:1fr}
+      .layer.l1,.layer.l2,.layer.l3{left:4%;transform:none}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">ExpenseTracker 3D</div>
+      <div class="top-controls">
+        <label class="muted">Language</label>
+        <select id="langSel"><option value="en">English</option><option value="mr">मराठी</option></select>
+
+        <label class="muted">Currency</label>
+        <select id="currencyTop"></select>
+
+        <input id="convVal" placeholder="100" style="width:90px" />
+        <select id="convTo"></select>
+        <button id="btnConvert">Convert</button>
+
+        <button id="navDash">Dashboard</button>
+        <button id="navTrends">Trends</button>
+        <button id="btnLogout" style="display:none">Logout</button>
+      </div>
+    </div>
+
+    <!-- LOGIN PAGE -->
+    <div id="loginPage" class="card login-grid">
+      <div class="card">
+        <h1 id="welcomeTitle">Welcome — Expense Tracker</h1>
+        <p id="welcomeSub" class="muted">Track, split and share expenses — for roommates, trips & students.</p>
+
+        <div class="field">
+          <label class="muted" id="lblUser">Username</label>
+          <input id="inpUser" placeholder="Your name or email" />
+        </div>
+        <div class="field">
+          <label class="muted" id="lblPass">Password</label>
+          <input id="inpPass" type="password" placeholder="Strong password" />
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="btnLogin" class="primary">Login / Sign up</button>
+          <button id="btnInfo">?</button>
+        </div>
+
+        <p class="muted" style="margin-top:14px">Password is hashed locally (SHA256). Your expense data is encrypted in browser (AES). For best security, do not share your password.</p>
+      </div>
+
+      <div class="image-block card" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
+        <!-- 3D layered blocks with real free images from Unsplash -->
+        <div class="layer l1"></div>
+        <div class="layer l2"></div>
+        <div class="layer l3" id="heroImage" style="background-image:url('https://images.unsplash.com/photo-1600180758895-0a6f1a7d2c99?w=1400&q=80&auto=format&fit=crop&s=bf2ff2ef2ee4c7f8b1fbe2b5f3a5c8cd')"></div>
+        <div class="image-caption" id="heroCaption">A creative 3D-style welcome panel — click Login to begin.</div>
+      </div>
+    </div>
+
+    <!-- APP PAGES (hidden until login) -->
+    <div id="appPages" style="display:none">
+      <!-- DASHBOARD -->
+      <div id="pageDashboard" class="page active">
+        <div class="main-grid">
+          <!-- Left panel -->
+          <div class="panel">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <div class="muted">Budget</div>
+                <input id="inpBudget" value="30000" />
+              </div>
+              <div style="text-align:right">
+                <div class="muted">Remaining</div>
+                <div id="remaining" style="font-weight:800;font-size:20px">0</div>
+              </div>
+            </div>
+
+            <hr style="margin:12px 0;border:none;border-top:1px dashed rgba(255,255,255,0.04)">
+
+            <div class="muted">Add Expense</div>
+            <div style="margin-top:8px">
+              <select id="selCat"></select>
+              <input id="inpAmt" placeholder="Amount" style="margin-top:8px" />
+              <input id="inpNote" placeholder="Note (optional)" style="margin-top:8px" />
+              <input id="inpDate" type="date" style="margin-top:8px;width:100%" />
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button id="btnAdd" class="primary">Add Expense</button>
+                <button id="btnSplit">Split Bill</button>
+              </div>
+            </div>
+
+            <hr style="margin:12px 0;border:none;border-top:1px dashed rgba(255,255,255,0.04)">
+
+            <div class="muted">Share / Import</div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <input type="file" id="fileImport" accept=".json" />
+              <button id="btnImport">Import JSON</button>
+            </div>
+
+            <div style="margin-top:8px">
+              <div class="muted">Due date reminder</div>
+              <input id="dueDate" type="date" />
+              <button id="btnSetDue">Set Reminder</button>
+            </div>
+
+            <div style="margin-top:12px;display:flex;gap:8px">
+              <button id="btnExportCSV">Export CSV</button>
+              <button id="btnExportJSON">Export JSON</button>
+              <button id="btnShare">Share Encrypted</button>
+            </div>
+            <div style="margin-top:10px" class="muted">Data saved encrypted locally (AES). To avoid losing data, keep a backup file exported.</div>
+          </div>
+
+          <!-- Right area -->
+          <div>
+            <div class="panel" style="margin-bottom:12px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  <button id="btnMonthly" class="chip">Monthly</button>
+                  <button id="btnYearly" class="chip">Yearly</button>
+                </div>
+                <div class="muted" id="recCount">0 records</div>
+              </div>
+
+              <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap">
+                <canvas id="chartLine" style="flex:1;min-width:300px;height:260px;background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent);border-radius:10px;padding:8px"></canvas>
+                <canvas id="chartPie" style="width:320px;height:260px;background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent);border-radius:10px;padding:8px"></canvas>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="muted">Transactions</div>
+                <div><button id="btnClear">Clear All</button></div>
+              </div>
+              <div style="max-height:260px;overflow:auto;margin-top:8px">
+                <table><thead><tr><th>Date</th><th>Category</th><th>Note</th><th>Amount</th></tr></thead><tbody id="txBody"></tbody></table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TRENDS PAGE -->
+      <div id="pageTrends" class="page">
+        <div class="panel">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div><strong>Trends</strong><div class="muted">Red = Expenses, Green = Balance</div></div>
+            <div><button id="btnBack">Back</button></div>
+          </div>
+          <div class="trend-area" style="margin-top:12px">
+            <canvas id="chartTrend" style="width:100%;height:100%"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer style="margin-top:18px" class="muted">Built locally • Save & host on GitHub Pages / Netlify for HTTPS (recommended).</footer>
+  </div>
+
+<script>
+/* ----------------------------
+   TRANSLATIONS, CATEGORIES, DEFAULTS
+   ---------------------------- */
+const TRANSLATIONS = {
+  en:{
+    welcome:'Welcome — Expense Tracker',
+    subtitle:'Track, split & share expenses — for roommates, trips & students.',
+    username:'Username', password:'Password'
+  },
+  mr:{
+    welcome:'स्वागत आहे — खर्च ट्रॅकर',
+    subtitle:'खर्च ट्रॅक करा, विभाजित करा आणि शेअर करा — रूममेट्स, ट्रिप्स आणि विद्यार्थी.',
+    username:'वापरकर्तानाव', password:'पासवर्ड'
+  }
+};
+
+const CATEGORIES = [
+  {key:'food', label_en:'Food', label_mr:'अन्न', emoji:'🍔'},
+  {key:'transport', label_en:'Transport', label_mr:'परिवहन', emoji:'🚗'},
+  {key:'rent', label_en:'Rent', label_mr:'भाडे', emoji:'🏠'},
+  {key:'bills', label_en:'Utilities', label_mr:'बिल्स', emoji:'💡'},
+  {key:'fun', label_en:'Entertainment', label_mr:'मनोरंजन', emoji:'🎮'},
+  {key:'other', label_en:'Other', label_mr:'इतर', emoji:'✨'}
+];
+
+const DEFAULT_RATES = { INR:1, USD:0.012, EUR:0.011 };
+
+/* ----------------------------
+   Crypto helpers
+   ---------------------------- */
+const AES = CryptoJS.AES, SHA256 = CryptoJS.SHA256;
+function hash(s){ return SHA256(s).toString(); }
+function encrypt(obj, pass){ return AES.encrypt(JSON.stringify(obj), pass).toString(); }
+function decrypt(str, pass){ try{ const bytes = AES.decrypt(str, pass); const txt = bytes.toString(CryptoJS.enc.Utf8); return txt ? JSON.parse(txt) : null;}catch(e){ return null; } }
+
+/* ----------------------------
+   State
+   ---------------------------- */
+let expenses = []; // {id,date,cat,amt,note}
+let rates = JSON.parse(localStorage.getItem('rates') || JSON.stringify(DEFAULT_RATES));
+let currency = localStorage.getItem('currency') || 'INR';
+let encPass = localStorage.getItem('enc_pass') || null;
+
+/* ----------------------------
+   DOM refs
+   ---------------------------- */
+const langSel = document.getElementById('langSel');
+const loginPage = document.getElementById('loginPage');
+const appPages = document.getElementById('appPages');
+const btnLogin = document.getElementById('btnLogin');
+const inpUser = document.getElementById('inpUser');
+const inpPass = document.getElementById('inpPass');
+const welcomeTitle = document.getElementById('welcomeTitle');
+const welcomeSub = document.getElementById('welcomeSub');
+
+const currencyTop = document.getElementById('currencyTop');
+const convTo = document.getElementById('convTo');
+const convVal = document.getElementById('convVal');
+const btnConvert = document.getElementById('btnConvert');
+const navDash = document.getElementById('navDash');
+const navTrends = document.getElementById('navTrends');
+const btnLogout = document.getElementById('btnLogout');
+
+const selCat = document.getElementById('selCat');
+const btnAdd = document.getElementById('btnAdd');
+const inpAmt = document.getElementById('inpAmt');
+const inpNote = document.getElementById('inpNote');
+const inpDate = document.getElementById('inpDate');
+const inpBudget = document.getElementById('inpBudget');
+const remainingEl = document.getElementById('remaining');
+const txBody = document.getElementById('txBody');
+const recCount = document.getElementById('recCount');
+const btnMonthly = document.getElementById('btnMonthly');
+const btnYearly = document.getElementById('btnYearly');
+
+const btnExportCSV = document.getElementById('btnExportCSV');
+const btnExportJSON = document.getElementById('btnExportJSON');
+const fileImport = document.getElementById('fileImport');
+const btnImport = document.getElementById('btnImport');
+const btnShare = document.getElementById('btnShare');
+const btnSplit = document.getElementById('btnSplit');
+const btnSetDue = document.getElementById('btnSetDue');
+const dueDate = document.getElementById('dueDate');
+const btnClear = document.getElementById('btnClear');
+
+const pageDashboard = document.getElementById('pageDashboard');
+const pageTrends = document.getElementById('pageTrends');
+const btnBack = document.getElementById('btnBack');
+
+const chartLineCtx = document.getElementById('chartLine').getContext('2d');
+const chartPieCtx = document.getElementById('chartPie').getContext('2d');
+const chartTrendCtx = document.getElementById('chartTrend').getContext('2d');
+
+/* ----------------------------
+   Charts
+   ---------------------------- */
+let lineChart, pieChart, trendChart;
+function setupCharts(){
+  lineChart = new Chart(chartLineCtx, {
+    type:'line',
+    data:{ labels:[], datasets:[{ label:'Amount', data:[], tension:0.3, fill:true, backgroundColor:'rgba(124,92,255,0.12)', borderColor:'#7c5cff', borderWidth:2 }]},
+    options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}}
+  });
+  pieChart = new Chart(chartPieCtx, {
+    type:'pie',
+    data:{ labels:[], datasets:[{ data:[], backgroundColor:['#8884d8','#82ca9d','#ffc658','#ff7f7f','#a28df0','#f8b195'] }]},
+    options:{responsive:true, plugins:{legend:{position:'bottom', labels:{color:'white'}}}}
+  });
+  trendChart = new Chart(chartTrendCtx, {
+    type:'line',
+    data:{ labels:[], datasets:[
+      { label:'Expenses', data:[], borderColor:'rgba(220,53,69,0.95)', backgroundColor:'rgba(220,53,69,0.12)', tension:0.3, borderWidth:2 },
+      { label:'Balance', data:[], borderColor:'rgba(40,167,69,0.95)', backgroundColor:'rgba(40,167,69,0.12)', tension:0.3, borderWidth:2 }
+    ]},
+    options:{responsive:true, maintainAspectRatio:false, scales:{y:{beginAtZero:true}}}
+  });
+}
+
+/* ----------------------------
+   Initialization
+   ---------------------------- */
+function init(){
+  // language
+  langSel.addEventListener('change', applyLang);
+  applyLang();
+
+  // fill categories
+  CATEGORIES.forEach(c=>{
+    const opt = document.createElement('option');
+    opt.value = c.key;
+    // display English by default
+    opt.textContent = `${c.emoji} ${c.label_en}`;
+    selCat.appendChild(opt);
+  });
+
+  // fill currencies
+  function fillCurrencies(){
+    currencyTop.innerHTML = ''; convTo.innerHTML = '';
+    Object.keys(rates).forEach(code=>{
+      const o = document.createElement('option'); o.value = code; o.textContent = code; currencyTop.appendChild(o);
+      const o2 = document.createElement('option'); o2.value = code; o2.textContent = code; convTo.appendChild(o2);
+    });
+    currencyTop.value = currency;
+    convTo.value = 'USD';
+  }
+  fillCurrencies();
+
+  // set date defaults
+  inpDate.valueAsDate = new Date();
+
+  // attach events
+  btnLogin.addEventListener('click', doLogin);
+  btnConvert.addEventListener('click', ()=> {
+    const v = Number(convVal.value); const to = convTo.value;
+    if(!v) return alert('Enter value'); alert(`${v} ${currencyTop.value} ≈ ${convert(v,to)} ${to}`);
+  });
+  navDash.addEventListener('click', ()=> showPage('dashboard'));
+  navTrends.addEventListener('click', ()=> showPage('trends'));
+  btnLogout.addEventListener('click', ()=> location.reload());
+
+  btnAdd.addEventListener('click', addExpense);
+  btnMonthly.addEventListener('click', ()=>{ btnMonthly.classList.add('active'); btnYearly.classList.remove('active'); updateCharts(); });
+  btnYearly.addEventListener('click', ()=>{ btnYearly.classList.add('active'); btnMonthly.classList.remove('active'); updateCharts(); });
+
+  btnExportCSV.addEventListener('click', exportCSV);
+  btnExportJSON.addEventListener('click', exportJSON);
+  btnImport.addEventListener('click', ()=> { if(fileImport.files[0]) importJSON(fileImport.files[0]); else alert('Choose file'); });
+  btnShare.addEventListener('click', shareSnapshot);
+  btnSplit.addEventListener('click', splitBill);
+  btnSetDue.addEventListener('click', setReminder);
+  btnClear.addEventListener('click', ()=>{ if(confirm('Clear all records?')){ expenses=[]; persist(); render(); }});
+  btnBack.addEventListener('click', ()=> showPage('dashboard'));
+
+  // load data if exists
+  loadEncrypted();
+  setupCharts();
+  render();
+}
+init();
+
+/* ----------------------------
+   Language apply
+   ---------------------------- */
+function applyLang(){
+  const L = langSel.value;
+  welcomeTitle.textContent = TRANSLATIONS[L].welcome;
+  welcomeSub.textContent = TRANSLATIONS[L].subtitle;
+  document.getElementById('lblUser').textContent = TRANSLATIONS[L].username;
+  document.getElementById('lblPass').textContent = TRANSLATIONS[L].password;
+
+  // categories labels
+  Array.from(selCat.options).forEach(opt=>{
+    const cat = CATEGORIES.find(c=>c.key===opt.value);
+    if(cat) opt.textContent = `${cat.emoji} ${L==='mr' ? cat.label_mr : cat.label_en}`;
+  });
+}
+
+/* ----------------------------
+   Auth (local) - create or validate
+   ---------------------------- */
+function doLogin(){
+  const u = inpUser.value.trim(), p = inpPass.value;
+  if(!u || !p) return alert('Enter username & password');
+  const stored = localStorage.getItem('user_hash');
+  const myhash = hash(u + '|' + p);
+  if(!stored){
+    // first time: create
+    localStorage.setItem('user_hash', myhash);
+    localStorage.setItem('user_name', u);
+    localStorage.setItem('enc_pass', p); // convenience: stored so user won't lose access (change if you prefer more secure)
+    encPass = p;
+    alert('Account created. Your data will be encrypted with your password.');
+  } else {
+    if(stored !== myhash) return alert('Incorrect credentials');
+    encPass = localStorage.getItem('enc_pass') || p;
+  }
+  // show app
+  loginPage.style.display = 'none';
+  appPages.style.display = 'block';
+  document.getElementById('btnLogout').style.display = 'inline-block';
+  // load data (if any)
+  loadEncrypted();
+  render();
+}
+
+/* ----------------------------
+   Persist & Load encrypted data
+   ---------------------------- */
+function persist(){
+  try{
+    const pass = localStorage.getItem('enc_pass') || encPass || 'default-pass';
+    const enc = encrypt(expenses, pass);
+    localStorage.setItem('expenses_enc', enc);
+    localStorage.setItem('rates', JSON.stringify(rates));
+    localStorage.setItem('currency', currencyTop.value || currency);
+  }catch(e){
+    console.error('Save error', e);
+  }
+}
+
+function loadEncrypted(){
+  const enc = localStorage.getItem('expenses_enc');
+  if(!enc){ expenses = JSON.parse(localStorage.getItem('expenses_plain') || '[]'); return; }
+  const pass = localStorage.getItem('enc_pass') || encPass || prompt('Enter passphrase to decrypt data (cancel to skip)');
+  if(!pass) return;
+  const dec = decrypt(enc, pass);
+  if(Array.isArray(dec)) expenses = dec;
+  else console.warn('Decryption failed (wrong pass?)');
+}
+
+/* ----------------------------
+   Add expense
+   ---------------------------- */
+function addExpense(){
+  const a = Number(inpAmt.value);
+  if(!a || a <= 0) return alert('Enter valid amount');
+  const item = {
+    id: Date.now(),
+    date: inpDate.value || new Date().toISOString().slice(0,10),
+    cat: selCat.value,
+    amt: Number(a.toFixed(2)),
+    note: inpNote.value || ''
+  };
+  expenses.push(item);
+  persist();
+  inpAmt.value=''; inpNote.value='';
+  render();
+}
+
+/* ----------------------------
+   Render UI lists & charts
+   ---------------------------- */
+function render(){
+  // budget & remaining
+  const budget = Number(inpBudget.value) || 0;
+  const spent = expenses.reduce((s,e)=>s + Number(e.amt), 0);
+  remainingEl.textContent = (budget - spent).toFixed(2) + ' ' + (currencyTop.value || currency);
+
+  // transaction list
+  txBody.innerHTML = '';
+  expenses.slice().reverse().forEach(e=>{
+    const cat = CATEGORIES.find(c=>c.key===e.cat) || {emoji:'', label_en:e.cat};
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${e.date}</td><td>${cat.emoji} ${langSel.value==='mr' ? (cat.label_mr||cat.label_en) : cat.label_en}</td><td>${e.note||''}</td><td>${e.amt.toFixed(2)} ${currencyTop.value||currency}</td>`;
+    txBody.appendChild(tr);
+  });
+  recCount.textContent = `${expenses.length} records`;
+  updateCharts();
+}
+
+/* ----------------------------
+   Charts update
+   ---------------------------- */
+function updateCharts(){
+  // monthly grouping
+  const m = {};
+  expenses.forEach(e => {
+    const key = e.date.slice(0,7);
+    m[key] = (m[key]||0) + Number(e.amt);
+  });
+  const months = Object.keys(m).sort();
+  const monthValues = months.map(k=>Number(m[k].toFixed(2)));
+
+  // yearly grouping
+  const y = {};
+  expenses.forEach(e=>{
+    const key = e.date.slice(0,4);
+    y[key] = (y[key]||0) + Number(e.amt);
+  });
+  const years = Object.keys(y).sort();
+  const yearValues = years.map(k=>Number(y[k].toFixed(2)));
+
+  const usingLabels = (btnMonthly.classList.contains('active') || !btnYearly.classList.contains('active')) ? (months.length?months:[new Date().toISOString().slice(0,7)]) : (years.length?years:[new Date().getFullYear()]);
+  const usingData = (btnMonthly.classList.contains('active') || !btnYearly.classList.contains('active')) ? (monthValues.length?monthValues:[0]) : (yearValues.length?yearValues:[0]);
+
+  // update line chart
+  lineChart.data.labels = usingLabels;
+  lineChart.data.datasets[0].data = usingData;
+  lineChart.update();
+
+  // pie chart by categories
+  const cmap = {};
+  expenses.forEach(e=> cmap[e.cat] = (cmap[e.cat]||0) + Number(e.amt));
+  pieChart.data.labels = CATEGORIES.map(c=>`${c.emoji} ${langSel.value==='mr' ? c.label_mr : c.label_en}`);
+  pieChart.data.datasets[0].data = CATEGORIES.map(c=> Number((cmap[c.key]||0).toFixed(2)));
+  pieChart.update();
+
+  // trend chart: red = expenses series (using same labels), green = remaining (budget - cumulative)
+  const budget = Number(inpBudget.value) || 0;
+  let cum = 0;
+  const expensesLine = usingData.slice();
+  const balanceLine = usingData.map((val, idx) => {
+    cum += val;
+    return Math.max(0, Number((budget - cum).toFixed(2)));
+  });
+  trendChart.data.labels = usingLabels;
+  trendChart.data.datasets[0].data = expensesLine;
+  trendChart.data.datasets[1].data = balanceLine;
+  trendChart.update();
+}
+
+/* ----------------------------
+   Export / Import / Share
+   ---------------------------- */
+function exportCSV(){
+  if(!expenses.length) return alert('No data');
+  const header = ['id','date','category','amount','note'].join(',') + '\n';
+  const body = expenses.map(e => `${e.id},${e.date},${e.cat},${e.amt},"${(e.note||'').replace(/"/g,'""')}"`).join('\n');
+  const blob = new Blob([header + body], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `expenses_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportJSON(){
+  if(!expenses.length) return alert('No data');
+  const blob = new Blob([JSON.stringify(expenses, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `expenses_${new Date().toISOString().slice(0,10)}.json`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importJSON(file){
+  const r = new FileReader();
+  r.onload = e => {
+    try{
+      const j = JSON.parse(e.target.result);
+      if(Array.isArray(j)){
+        expenses = expenses.concat(j);
+        persist(); render(); alert('Imported records.');
+      } else alert('Invalid file.');
+    }catch(err){ alert('Parse error'); }
+  };
+  r.readAsText(file);
+}
+
+/* share encrypted snapshot for roommates/trips */
+function shareSnapshot(){
+  if(!expenses.length) return alert('No data to share');
+  const pass = prompt('Enter temporary passphrase to encrypt the shared snapshot (share this passphrase with recipients):');
+  if(!pass) return;
+  const enc = encrypt(expenses, pass);
+  const payload = btoa(enc);
+  const text = `Shared snapshot (paste after URL as #share:...): #share:${payload}\nPassphrase: ${pass}`;
+  navigator.clipboard.writeText(text).then(()=> alert('Share payload copied to clipboard. Send it to roommates and provide the passphrase.'));
+}
+
+/* auto-import from URL hash if provided */
+if(location.hash && location.hash.startsWith('#share:')){
+  try{
+    const payload = location.hash.replace('#share:','');
+    const enc = atob(payload);
+    const pass = prompt('Enter passphrase to decrypt shared snapshot:');
+    if(pass){
+      const dec = decrypt(enc, pass);
+      if(Array.isArray(dec)){
+        expenses = expenses.concat(dec);
+        persist(); render(); alert('Imported shared snapshot.');
+        location.hash = '';
+      } else alert('Bad passphrase or payload.');
+    }
+  }catch(e){}
+}
+
+/* ----------------------------
+   Split bill
+   ---------------------------- */
+function splitBill(){
+  const total = prompt('Enter total amount to split:');
+  if(!total) return;
+  const people = prompt('Enter names separated by comma (Alice,Bob):');
+  if(!people) return;
+  const names = people.split(',').map(s=>s.trim()).filter(Boolean);
+  const t = Number(total);
+  if(!t || !names.length) return alert('Invalid');
+  const per = Number((t / names.length).toFixed(2));
+  const date = new Date().toISOString().slice(0,10);
+  names.forEach(name => {
+    expenses.push({ id: Date.now() + Math.floor(Math.random()*1000), date, cat:'other', amt: per, note: `Split: ${names.join(',')} - ${name}`});
+  });
+  persist(); render();
+  alert(`Created ${names.length} split entries of ${per} each.`);
+}
+
+/* ----------------------------
+   Reminder
+   ---------------------------- */
+function setReminder(){
+  const d = dueDate.value;
+  if(!d) return alert('Pick a date');
+  const ms = new Date(d).getTime() - Date.now();
+  if(ms <= 0) return alert('Pick a future date');
+  if(Notification && Notification.permission !== 'granted') Notification.requestPermission();
+  setTimeout(()=> {
+    if(Notification && Notification.permission === 'granted'){
+      new Notification('Expense Reminder', { body: `Payment due on ${d}` });
+    } else {
+      alert(`Reminder: Payment due on ${d}`);
+    }
+  }, ms);
+  alert('Reminder set. Keep site open for the notification, or host on HTTPS for persistent notification features.');
+}
+
+/* ----------------------------
+   Currency convert (simple base INR)
+   ---------------------------- */
+function convert(val, to){
+  const baseINR = val * (rates['INR'] || 1) / (rates[currencyTop.value] || 1);
+  return Number( (baseINR * ((rates[to]||1) / (rates['INR']||1))).toFixed(2) );
+}
+
+/* ----------------------------
+   Persistence helpers
+   ---------------------------- */
+function persist(){
+  try{
+    const pass = localStorage.getItem('enc_pass') || encPass || 'default-pass';
+    const enc = encrypt(expenses, pass);
+    localStorage.setItem('expenses_enc', enc);
+    localStorage.setItem('rates', JSON.stringify(rates));
+    localStorage.setItem('currency', currencyTop.value || currency);
+  }catch(e){ console.error('persist failed', e); }
+}
+
+function persistWrapper(){
+  persist();
+  render();
+}
+window.addEventListener('beforeunload', ()=> persist());
+
+/* ----------------------------
+   Load existing data
+   ---------------------------- */
+function loadEncrypted(){
+  const enc = localStorage.getItem('expenses_enc');
+  if(!enc) { expenses = JSON.parse(localStorage.getItem('expenses_plain') || '[]'); return; }
+  const pass = localStorage.getItem('enc_pass') || encPass || prompt('Enter passphrase to decrypt data (cancel to skip)');
+  if(!pass) return;
+  const dec = decrypt(enc, pass);
+  if(Array.isArray(dec)) expenses = dec;
+  else console.warn('Decryption failed');
+}
+
+/* ----------------------------
+   Show Page
+   ---------------------------- */
+function showPage(name){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  if(name === 'dashboard') { pageDashboard.classList.add('active'); }
+  if(name === 'trends') { pageTrends.classList.add('active'); updateCharts(); }
+}
+
+/* ----------------------------
+   Chart updates wrapper
+   ---------------------------- */
+function updateCharts(){ if(typeof(lineChart) === 'undefined') return; render(); }
+
+/* ----------------------------
+   Initial setup once charts are created
+   ---------------------------- */
+(function postInit(){
+  // Create charts after a tiny delay to ensure canvas available
+  setupCharts();
+  // If stored rates/currency exist, populate selects
+  try{ rates = JSON.parse(localStorage.getItem('rates') || JSON.stringify(DEFAULT_RATES)); }catch(e){}
+  const curSel = document.getElementById('currencyTop');
+  const convSel = document.getElementById('convTo');
+  curSel.innerHTML = ''; convSel.innerHTML = '';
+  Object.keys(rates).forEach(code=>{
+    const o = document.createElement('option'); o.value = code; o.textContent = code; curSel.appendChild(o);
+    const o2 = document.createElement('option'); o2.value = code; o2.textContent = code; convSel.appendChild(o2);
+  });
+  curSel.value = localStorage.getItem('currency') || 'INR';
+  convSel.value = 'USD';
+
+  // load any encrypted records
+  loadEncrypted();
+  render();
+})();
+
+</script>
+</body>
+</html>
 # dailyexpense-tracker.on
